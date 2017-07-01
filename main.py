@@ -6,6 +6,8 @@ import os
 import sys
 import wave
 import random
+import signal
+import snowboydecoder
 
 voice_lang="-ven-us"
 voice_speed="-s175" # default: 175
@@ -13,6 +15,8 @@ voice_type="m7"     # current: m7
 voice_gap=""        # default: -g10
 
 BUFFER_SIZE = 512
+
+interrupted = False
 
 def play_random_error():
     error_reponses =    [
@@ -38,14 +42,17 @@ class MyListener(houndify.HoundListener):
             play_random_error()
     def onError(self, err):
         print("Error: " + str(err))
+        play_voice("I'm very sorry, but I've had enough for today. Goodbye.")
 
 def play_voice(voice_text):
+    # espeak
     os.system("espeak "+voice_lang +"+"+voice_type+" "+voice_speed+" "+voice_gap+" \""+voice_text+"\" 2>/dev/null")
+    
+    # gTTS
     # tts = gTTS(text=voice_text, lang='en-uk')
     # tts.save("response.mp3")
     # os.system("play response.mp3")
     # os.remove("response.mp3")
-
 
 def test_voice():
     voice_text = "Hello. I am fir. Nice to meet you."
@@ -54,6 +61,42 @@ def test_voice():
     play_voice(voice_text)
     voice_text = "I am sorry to hear that, but I am just a robot."
     play_voice(voice_text)
+
+def run_voice_request(client):
+    snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING)
+    i = 0
+    finished = False
+    GPIO.output(18,GPIO.HIGH)
+    os.system("amixer sset PCM mute")
+    try:
+        client.start(MyListener())
+        print("Starting voice control")
+        while not finished and i<5:
+            os.system("arecord temp"+str(i)+".wav -D sysdefault:CARD=1 -r 16000 -f S16_LE -d 1")
+            audio = wave.open("temp"+str(i)+".wav")
+            samples = audio.readframes(BUFFER_SIZE)
+            while len(samples) != 0 and not finished:
+                finished = client.fill(samples)
+                samples = audio.readframes(BUFFER_SIZE)
+            audio.close()
+            os.remove("temp"+str(i)+".wav")
+            i+=1
+        os.system("amixer sset PCM unmute")
+        client.finish()
+        GPIO.output(18,GPIO.LOW)
+        print("Finished voice control")
+    except:
+        GPIO.output(18,GPIO.LOW)
+        os.system("amixer sset PCM unmute")
+
+def signal_handler(signal, frame):
+    global interrupted
+    interrupted = True
+
+
+def interrupt_callback():
+    global interrupted
+    return interrupted
 
 if __name__ == '__main__':
     print("client id: "+client_defines.CLIENT_ID+"\nclient key: "+client_defines.CLIENT_KEY)
@@ -75,28 +118,25 @@ if __name__ == '__main__':
     client.setHoundRequestInfo('ClientMatches', clientMatches)
     client.setHoundRequestInfo('UnitPreference', 'METRIC')
     client.setHoundRequestInfo('FirstPersonSelf', 'Fir')
-
     client.setSampleRate(16000)
-    
-    i = 0
-    finished = False
-    GPIO.output(18,GPIO.HIGH)
-    try:
-        client.start(MyListener())
-        print("Starting voice control")
-        while not finished and i<5:
-            os.system("arecord temp"+str(i)+".wav -D sysdefault:CARD=1 -r 16000 -f S16_LE -d 1")
-            audio = wave.open("temp"+str(i)+".wav")
-            samples = audio.readframes(BUFFER_SIZE)
-            while len(samples) != 0 and not finished:
-                finished = client.fill(samples)
-                samples = audio.readframes(BUFFER_SIZE)
-            audio.close()
-            os.remove("temp"+str(i)+".wav")
-            i+=1
 
-        client.finish()
-        GPIO.output(18,GPIO.LOW)
-        print("Finished voice control")
-    except:
-        GPIO.output(18,GPIO.LOW)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    models = ["fir_model.umdl", "hello_model.umdl", "hi_model.umdl", "hey_fir_model.umdl"]
+    sensitivity = [0.5, 0.2, 0.2, 0.5]
+
+    if not len(models) == len(sensitivity):
+        raise AssertionError()
+
+    detector = snowboydecoder.HotwordDetector(models, sensitivity=sensitivity)
+    callbacks = [lambda: snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING),
+                 lambda: snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING),
+                 lambda: snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING),
+                 lambda: snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING)]
+    print('Listening... Press Ctrl+C to exit')
+
+    detector.start(detected_callback=callbacks,
+                   interrupt_check=interrupt_callback,
+                   sleep_time=0.03)
+
+    detector.terminate()

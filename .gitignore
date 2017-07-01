@@ -6,3 +6,4 @@ components.txt
 terminal_shortcuts.txt
 src/client_defines.py
 data/wake_word_recordings/
+resources/*.wav
