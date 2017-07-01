@@ -18,6 +18,7 @@ BUFFER_SIZE = 512
 
 interrupted = False
 detected = False
+error = False
 
 def play_random_error():
     error_reponses =    [
@@ -34,7 +35,7 @@ class MyListener(houndify.HoundListener):
     def onFinalResponse(self, response):
         print("Final response: " + str(response))
         if len(response["AllResults"]) > 0:
-            spokenResponseLong = response["AllResults"][0]["WrittenResponse"]
+            spokenResponseLong = response["AllResults"][0]["WrittenResponseLong"]
             if spokenResponseLong != "Didn't get that!":
                 play_voice(spokenResponseLong)
             else:
@@ -42,8 +43,9 @@ class MyListener(houndify.HoundListener):
         else:
             play_random_error()
     def onError(self, err):
+        global error
         print("Error: " + str(err))
-        play_voice("I'm very sorry, but I've had enough for today. Goodbye.")
+        error = True
 
 def play_voice(voice_text):
     # espeak
@@ -64,7 +66,7 @@ def test_voice():
     play_voice(voice_text)
 
 def run_voice_request(client):
-    global interrupted
+    global interrupted, error
     i = 0
     finished = False
     try:
@@ -84,6 +86,9 @@ def run_voice_request(client):
             i+=1
         os.system("amixer sset PCM unmute")
         client.finish()
+        if error:
+            interrupted = True
+            raise Exception("Error")
         GPIO.output(18,GPIO.LOW)
         print("Finished voice control")
     except:
@@ -99,7 +104,7 @@ def detection_callback():
     global detected
     detected = True
     snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING)
-    # os.system("play resources/ding.wav")
+    os.system("play resources/ding.wav")
 
 def interrupt_callback():
     global interrupted, detected
@@ -117,10 +122,10 @@ if __name__ == '__main__':
     clientMatches = [ {
         "Expression" : '"what" . "is" . "your" . "name"',
         "Result" : { "Intent" : "NAME" },
-        "SpokenResponse" : "I am fir",
-        "SpokenResponseLong" : "My name is fir. Nice to meet you.",
-        "WrittenResponse" : "I am fir.",
-        "WrittenResponseLong" : "My name is fir. Nice to meet you."
+        "SpokenResponse" : "My name is fir. Nice to meet you.",
+        "SpokenResponseLong" : "My name is fir. I am a robot who can be quite chatty. Nice to meet you.",
+        "WrittenResponse" : "My name is fir. Nice to meet you.",
+        "WrittenResponseLong" : "My name is fir. I am a robot who can be quite chatty. Nice to meet you."
     } ]
     client.setHoundRequestInfo('ClientMatches', clientMatches)
     client.setHoundRequestInfo('UnitPreference', 'METRIC')
@@ -150,3 +155,6 @@ if __name__ == '__main__':
         detector.terminate()
         if not interrupted:
             run_voice_request(client)
+
+    if error:
+        play_voice("I'm very sorry, but I've had enough for today. Goodbye.")
