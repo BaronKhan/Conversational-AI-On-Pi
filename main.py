@@ -1,5 +1,6 @@
 from src import houndify
 from src import client_defines
+from src import client_matches
 from gtts import gTTS
 import RPi.GPIO as GPIO
 import os
@@ -8,6 +9,7 @@ import wave
 import random
 import signal
 import snowboydecoder
+import time
 
 voice_lang="-ven-us"
 voice_speed="-s175" # default: 175
@@ -15,6 +17,9 @@ voice_type="m7"     # current: m7
 voice_gap=""        # default: -g10
 
 BUFFER_SIZE = 512
+
+# name = "fir"
+name = "pascal"
 
 interrupted = False
 detected = False
@@ -47,18 +52,26 @@ class MyListener(houndify.HoundListener):
         print("Error: " + str(err))
         error = True
 
+def group_words(s, n):
+    words = s.split()
+    for i in range(0, len(words), n):
+        yield ' '.join(words[i:i+n])
+
 def play_voice(voice_text):
-    # espeak
-    # os.system("espeak "+voice_lang +"+"+voice_type+" "+voice_speed+" "+voice_gap+" \""+voice_text+"\" 2>/dev/null")
-    
-    # gTTS
-    tts = gTTS(text=voice_text, lang='en-uk')
-    tts.save("response.mp3")
-    os.system("play response.mp3")
-    os.remove("response.mp3")
+    if name == "pascal":
+        # gTTS
+        tts = gTTS(text=voice_text, lang='en-uk')
+        tts.save("response.mp3")
+        os.system("play response.mp3")
+        os.remove("response.mp3")
+    else:
+        # espeak
+        voice_sentences = group_words(voice_text, 10)
+        for voice_sentence in voice_sentences:
+            os.system("espeak "+voice_lang +"+"+voice_type+" "+voice_speed+" "+voice_gap+" \""+voice_sentence+"\" 2>/dev/null")
 
 def test_voice():
-    voice_text = "Hello. I am fir. Nice to meet you."
+    voice_text = "Hello. I am "+name+". Nice to meet you."
     play_voice(voice_text)
     voice_text = "The temperature is sixteen degrees celsius."
     play_voice(voice_text)
@@ -103,7 +116,7 @@ def signal_handler(signal, frame):
 def detection_callback():
     global detected
     detected = True
-    snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING)
+    # snowboydecoder.play_audio_file(snowboydecoder.DETECT_DING)
     os.system("play resources/ding.wav")
 
 def interrupt_callback():
@@ -113,23 +126,17 @@ def interrupt_callback():
 if __name__ == '__main__':
     print("client id: "+client_defines.CLIENT_ID+"\nclient key: "+client_defines.CLIENT_KEY)
 
+    play_voice("Hello.")
+
     GPIO.setmode(GPIO.BCM)
     GPIO.setwarnings(False)
     GPIO.setup(18,GPIO.OUT)
 
-    client = houndify.StreamingHoundClient(client_defines.CLIENT_ID, client_defines.CLIENT_KEY, "fir_robot")
+    client = houndify.StreamingHoundClient(client_defines.CLIENT_ID, client_defines.CLIENT_KEY, "ai_robot")
     client.setLocation(51.654022,-0.038691)
-    clientMatches = [ {
-        "Expression" : '"what" . "is" . "your" . "name"',
-        "Result" : { "Intent" : "NAME" },
-        "SpokenResponse" : "My name is fir. Nice to meet you.",
-        "SpokenResponseLong" : "My name is fir. I am a robot who can be quite chatty. Nice to meet you.",
-        "WrittenResponse" : "My name is fir. Nice to meet you.",
-        "WrittenResponseLong" : "My name is fir. I am a robot who can be quite chatty. Nice to meet you."
-    } ]
-    client.setHoundRequestInfo('ClientMatches', clientMatches)
+    client.setHoundRequestInfo('ClientMatches', client_matches.clientMatches)
     client.setHoundRequestInfo('UnitPreference', 'METRIC')
-    client.setHoundRequestInfo('FirstPersonSelf', 'Fir')
+    client.setHoundRequestInfo('FirstPersonSelf', name)
     client.setSampleRate(16000)
 
     signal.signal(signal.SIGINT, signal_handler)
