@@ -18,7 +18,7 @@ CLIENT_ID = "YOUR CLIENT ID FROM HOUNDIFY"
 CLIENT_KEY = "YOUR CLIENT KEY FROM HOUNDIFY"
 ```
 
-After creating this file, just run python3 main.py, and say FIR's name. You will hear a ding sound indicating the start
+After creating this file, just run `python3 main.py`, and say FIR's name. You will hear a ding sound indicating the start
 of the voice request.
 
 Note that this is just a prototype for a future voice-controlled room-automation project, _Pascal_.
